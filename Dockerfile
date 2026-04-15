@@ -1,4 +1,4 @@
-# Base image
+# Base image (using slim to save RAM/Space)
 FROM python:3.11-slim
 
 # Install system dependencies (espeak-ng is REQUIRED for Kokoro TTS)
@@ -7,18 +7,21 @@ RUN apt-get update && apt-get install -y \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory
+# Set working directory
 WORKDIR /app
 
-# Copy requirement list and install python dependencies
+# Copy requirements first (leverages Docker cache)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application files
+# Install CPU-specific torch and other dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy application files
 COPY . .
 
-# Expose Render's default port 
+# Expose port (Render sets $PORT env automatically)
 EXPOSE 8000
 
-# Start Uvicorn, mapping the dynamic $PORT provided by Render
-CMD sh -c "uvicorn local_server:app --host 0.0.0.0 --port ${PORT:-8000}"
+# Optimized Uvicorn settings for low-memory environments
+CMD uvicorn local_server:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --timeout-keep-alive 120
